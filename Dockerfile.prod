@@ -1,6 +1,6 @@
 ARG PYTHON_VERSION=3.11
 # Use NVIDIA's CUDA development image instead of slim Python
-FROM nvidia/cuda:12.1-devel-ubuntu20.04 AS base
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS base
 
 # Install Python
 RUN apt-get update && apt-get install -y \
