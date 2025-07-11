@@ -6,6 +6,7 @@ set -e
 # Configuration
 COMPOSE_FILE="compose.yaml"
 PROD_COMPOSE_FILE="compose.prod.yaml"
+CPU_COMPOSE_FILE="compose.cpu.yaml"
 CONFIG_FILE=".env"
 
 # Colors for output
@@ -16,9 +17,10 @@ NC='\033[0m' # No Color
 
 # Functions
 print_usage() {
-    echo "Usage: $0 [dev|prod|stop|logs|test]"
+    echo "Usage: $0 [dev|prod|cpu|stop|logs|test]"
     echo "  dev   - Start development environment"
-    echo "  prod  - Start production environment"
+    echo "  prod  - Start production environment (GPU with flash_attn)"
+    echo "  cpu   - Start CPU-only production environment"
     echo "  stop  - Stop all containers"
     echo "  logs  - Show container logs"
     echo "  test  - Run API tests"
@@ -60,19 +62,30 @@ start_prod() {
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
 }
 
+start_cpu() {
+    echo -e "${GREEN}🚀 Starting CPU-only production environment...${NC}"
+    setup_config
+    docker compose -f "$CPU_COMPOSE_FILE" up --build -d
+    echo -e "${GREEN}✅ CPU-only production environment started${NC}"
+    echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
+}
+
 stop_all() {
     echo -e "${YELLOW}🛑 Stopping all containers...${NC}"
     docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
     docker compose -f "$PROD_COMPOSE_FILE" down 2>/dev/null || true
+    docker compose -f "$CPU_COMPOSE_FILE" down 2>/dev/null || true
     echo -e "${GREEN}✅ All containers stopped${NC}"
 }
 
 show_logs() {
     echo -e "${GREEN}📋 Container logs:${NC}"
-    if docker ps --format "table {{.Names}}" | grep -q "qwen3-reranker"; then
-        docker logs -f qwen3-reranker
-    elif docker ps --format "table {{.Names}}" | grep -q "qwen3-reranker-prod"; then
+    if docker ps --format "table {{.Names}}" | grep -q "qwen3-reranker-prod"; then
         docker logs -f qwen3-reranker-prod
+    elif docker ps --format "table {{.Names}}" | grep -q "qwen3-reranker-cpu"; then
+        docker logs -f qwen3-reranker-cpu
+    elif docker ps --format "table {{.Names}}" | grep -q "qwen3-reranker"; then
+        docker logs -f qwen3-reranker
     else
         echo -e "${RED}No Qwen reranker containers running${NC}"
     fi
@@ -99,6 +112,9 @@ case "${1:-}" in
         ;;
     "prod")
         start_prod
+        ;;
+    "cpu")
+        start_cpu
         ;;
     "stop")
         stop_all

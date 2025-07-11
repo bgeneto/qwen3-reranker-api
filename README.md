@@ -30,8 +30,11 @@ chmod +x deploy.sh
 cp config.env.example .env
 # Edit .env with your settings
 
-# Start production environment
+# Start production environment (GPU with flash_attn)
 ./deploy.sh prod
+
+# OR start CPU-only environment (without flash_attn)
+./deploy.sh cpu
 
 # Test the API
 ./deploy.sh test
@@ -49,6 +52,24 @@ cp config.env.example .env
 # Stop services
 ./deploy.sh stop
 ```
+
+## 🔧 Deployment Options
+
+### GPU Production (Recommended)
+- Uses `./deploy.sh prod`
+- Includes flash_attn for faster inference
+- Requires NVIDIA GPU with CUDA support
+- Uses `nvidia/cuda:12.1-devel-ubuntu20.04` base image
+- Higher memory usage but fastest performance
+
+### CPU-Only Production
+- Uses `./deploy.sh cpu`
+- No flash_attn dependency
+- Works on any system
+- Uses `python:3.11-slim` base image
+- Lower memory usage but slower inference
+
+### Manual Deployment
 ```bash
 # Copy and configure environment
 cp config.env.example .env
