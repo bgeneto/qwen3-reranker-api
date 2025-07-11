@@ -55,7 +55,7 @@ cp config.env.example .env
 # Edit .env with your settings
 
 # Deploy with production configuration
-docker-compose -f compose.prod.yaml up -d
+docker compose -f compose.prod.yaml up -d
 ```
 
 ## 📊 API Endpoints

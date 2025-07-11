@@ -30,8 +30,8 @@ check_requirements() {
         exit 1
     fi
 
-    if ! command -v docker-compose &> /dev/null; then
-        echo -e "${RED}Error: Docker Compose is not installed${NC}"
+    if ! docker compose version &> /dev/null; then
+        echo -e "${RED}Error: Docker Compose plugin is not installed${NC}"
         exit 1
     fi
 }
@@ -47,7 +47,7 @@ setup_config() {
 start_dev() {
     echo -e "${GREEN}🚀 Starting development environment...${NC}"
     setup_config
-    docker-compose -f "$COMPOSE_FILE" up --build -d
+    docker compose -f "$COMPOSE_FILE" up --build -d
     echo -e "${GREEN}✅ Development environment started${NC}"
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
 }
@@ -55,15 +55,15 @@ start_dev() {
 start_prod() {
     echo -e "${GREEN}🚀 Starting production environment...${NC}"
     setup_config
-    docker-compose -f "$PROD_COMPOSE_FILE" up --build -d
+    docker compose -f "$PROD_COMPOSE_FILE" up --build -d
     echo -e "${GREEN}✅ Production environment started${NC}"
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
 }
 
 stop_all() {
     echo -e "${YELLOW}🛑 Stopping all containers...${NC}"
-    docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-    docker-compose -f "$PROD_COMPOSE_FILE" down 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+    docker compose -f "$PROD_COMPOSE_FILE" down 2>/dev/null || true
     echo -e "${GREEN}✅ All containers stopped${NC}"
 }
 
