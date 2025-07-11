@@ -46,9 +46,15 @@ class RerankerTester:
             print(f"Metrics check failed: {e}")
             return {}
 
-    def test_rerank(self, query: str, documents: List[str], top_k: int = None) -> Dict:
+    def test_rerank(
+        self, query: str, documents: List[str], top_n: int = None, model: str = None
+    ) -> Dict:
         """Test rerank endpoint"""
-        payload = {"query": query, "documents": documents, "top_k": top_k}
+        payload = {"query": query, "documents": documents}
+        if top_n is not None:
+            payload["top_n"] = top_n
+        if model is not None:
+            payload["model"] = model
 
         try:
             start_time = time.time()
@@ -156,7 +162,7 @@ class RerankerTester:
             "Berlin is the capital of Germany.",
         ]
 
-        result = self.test_rerank(test_query, test_documents, top_k=2)
+        result = self.test_rerank(test_query, test_documents, top_n=2)
         if result["success"]:
             print(f"   ✅ Basic reranking passed")
             print(f"   ⏱️  Response time: {result['elapsed_time']:.3f}s")
@@ -175,6 +181,24 @@ class RerankerTester:
                     "   ✅ Reranking properly protected (401 expected without API key)"
                 )
 
+        # Test 3.1: Cohere-compatible format with model field
+        print("3.1. Testing Cohere-compatible format with model field...")
+        cohere_result = self.test_rerank(
+            test_query, test_documents, top_n=2, model="rerank-v3.5"
+        )
+        if cohere_result["success"]:
+            print(f"   ✅ Cohere format test passed")
+            print(f"   ⏱️  Response time: {cohere_result['elapsed_time']:.3f}s")
+        else:
+            if self.api_key:
+                print(
+                    f"   ❌ Cohere format test failed: {cohere_result.get('error', 'Unknown error')}"
+                )
+            else:
+                print(
+                    "   ✅ Cohere format properly protected (401 expected without API key)"
+                )
+
         # Test 4: Edge cases
         print("4. Testing edge cases...")
 
@@ -185,12 +209,12 @@ class RerankerTester:
         else:
             print("   ❌ Empty documents test failed")
 
-        # Large top_k
-        large_k_result = self.test_rerank(test_query, test_documents, top_k=100)
-        if large_k_result["success"]:
-            print("   ✅ Large top_k handled correctly")
+        # Large top_n
+        large_n_result = self.test_rerank(test_query, test_documents, top_n=100)
+        if large_n_result["success"]:
+            print("   ✅ Large top_n handled correctly")
         else:
-            print("   ❌ Large top_k test failed")
+            print("   ❌ Large top_n test failed")
 
         # Test 5: Authentication failures
         print("5. Testing authentication failures...")

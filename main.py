@@ -3,7 +3,7 @@ Qwen3 Reranker API Service
 
 A FastAPI-based service for document reranking using the Qwen/Qwen3-Reranker family of models.
 This service provides an endpoint to rerank documents based on query relevance, returning results
-in a format compatible with Cohere and Jina APIs. It includes robust, configurable logging.
+in a format compatible with Cohere and Jina APIs. The API follows Cohere rerank API standards.
 
 Author: Bernhard Enders (bgeneto)
 Adapted By: Gemini/Claude
@@ -28,14 +28,23 @@ Environment Variables:
 
 API Endpoints:
     GET /: Health check endpoint
-    POST /rerank: Document reranking endpoint
+    POST /rerank: Document reranking endpoint (Cohere API compatible)
 
-Example Usage:
+Example Usage (Cohere API Compatible):
     POST /rerank
     {
+        "model": "rerank-v3.5",
         "query": "What is the capital of France?",
         "documents": ["Paris is the capital of France.", "London is a large city.", "The Eiffel Tower is in Paris."],
-        "top_k": 2
+        "top_n": 2
+    }
+
+Response Format:
+    {
+        "results": [
+            {"index": 0, "relevance_score": 0.9856},
+            {"index": 2, "relevance_score": 0.8742}
+        ]
     }
 """
 
@@ -348,11 +357,14 @@ def shutdown_event():
 
 # --- Pydantic Models for API I/O ---
 class RerankRequest(BaseModel):
+    model: Optional[str] = Field(
+        None, description="Model identifier (for API compatibility)"
+    )
     query: str = Field(..., max_length=MAX_QUERY_LENGTH, description="The search query")
     documents: List[str] = Field(
         ..., max_length=MAX_DOCUMENTS, description="List of documents to rerank"
     )
-    top_k: Optional[int] = Field(
+    top_n: Optional[int] = Field(
         None, ge=1, le=MAX_DOCUMENTS, description="Number of top results to return"
     )
 
@@ -387,13 +399,13 @@ class RerankRequest(BaseModel):
 
         return [doc.strip() for doc in v]
 
-    @field_validator("top_k")
+    @field_validator("top_n")
     @classmethod
-    def validate_top_k(cls, v, info):
+    def validate_top_n(cls, v, info):
         if v is not None:
             documents = info.data.get("documents", [])
             if v > len(documents):
-                raise ValueError("top_k cannot be greater than the number of documents")
+                raise ValueError("top_n cannot be greater than the number of documents")
         return v
 
 
@@ -479,9 +491,10 @@ def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)
             {
                 "timestamp": start_time.isoformat(),
                 "endpoint": "/rerank",
+                "model": request.model,
                 "query_length": len(request.query),
                 "documents_count": len(request.documents),
-                "top_k": request.top_k,
+                "top_n": request.top_n,
             },
             ensure_ascii=False,
         ),
@@ -517,9 +530,9 @@ def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)
         indexed_results, key=lambda x: x["relevance_score"], reverse=True
     )
 
-    # Apply top_k truncation if specified
-    if request.top_k is not None and request.top_k > 0:
-        final_results = sorted_results[: request.top_k]
+    # Apply top_n truncation if specified
+    if request.top_n is not None and request.top_n > 0:
+        final_results = sorted_results[: request.top_n]
     else:
         final_results = sorted_results
 
