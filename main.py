@@ -180,7 +180,9 @@ try:
                 MODEL_NAME,
                 torch_dtype=DTYPE,
                 attn_implementation="flash_attention_2",
-            )
+            ).to(
+                DEVICE
+            )  # Move test model to GPU
             del model_test  # free memory
             use_flash_attn = True
             print("Flash Attention 2 is available. Using for faster inference.")
