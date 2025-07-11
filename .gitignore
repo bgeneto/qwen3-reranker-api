@@ -63,6 +63,9 @@ cache/
 .env
 config.env
 
+# Generated compose file (copied from compose.prod.yaml or compose.cpu.yaml)
+compose.yaml
+
 # Temporary files
 *.tmp
 *.temp

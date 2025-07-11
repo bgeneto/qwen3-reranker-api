@@ -46,9 +46,39 @@ setup_config() {
     fi
 }
 
+setup_hf_cache() {
+    if [ ! -d "./hf_cache" ]; then
+        echo -e "${YELLOW}Creating hf_cache directory...${NC}"
+        mkdir -p ./hf_cache
+        chmod 777 ./hf_cache
+        echo -e "${GREEN}✅ Created hf_cache directory with 777 permissions${NC}"
+    fi
+}
+
+setup_compose_file() {
+    local mode="$1"
+
+    case "$mode" in
+        "prod")
+            echo -e "${YELLOW}Setting up compose.yaml for production...${NC}"
+            cp "$PROD_COMPOSE_FILE" "$COMPOSE_FILE"
+            echo -e "${GREEN}✅ Copied $PROD_COMPOSE_FILE to $COMPOSE_FILE${NC}"
+            ;;
+        "cpu")
+            echo -e "${YELLOW}Setting up compose.yaml for CPU-only...${NC}"
+            cp "$CPU_COMPOSE_FILE" "$COMPOSE_FILE"
+            echo -e "${GREEN}✅ Copied $CPU_COMPOSE_FILE to $COMPOSE_FILE${NC}"
+            ;;
+        *)
+            # For dev mode, we keep the original compose.yaml
+            ;;
+    esac
+}
+
 start_dev() {
     echo -e "${GREEN}🚀 Starting development environment...${NC}"
     setup_config
+    setup_hf_cache
     docker compose -f "$COMPOSE_FILE" up --build -d
     echo -e "${GREEN}✅ Development environment started${NC}"
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
@@ -57,7 +87,9 @@ start_dev() {
 start_prod() {
     echo -e "${GREEN}🚀 Starting production environment...${NC}"
     setup_config
-    docker compose -f "$PROD_COMPOSE_FILE" up --build -d
+    setup_hf_cache
+    setup_compose_file "prod"
+    docker compose -f "$COMPOSE_FILE" up --build -d
     echo -e "${GREEN}✅ Production environment started${NC}"
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
 }
@@ -65,7 +97,9 @@ start_prod() {
 start_cpu() {
     echo -e "${GREEN}🚀 Starting CPU-only production environment...${NC}"
     setup_config
-    docker compose -f "$CPU_COMPOSE_FILE" up --build -d
+    setup_hf_cache
+    setup_compose_file "cpu"
+    docker compose -f "$COMPOSE_FILE" up --build -d
     echo -e "${GREEN}✅ CPU-only production environment started${NC}"
     echo -e "${YELLOW}API available at: http://localhost:8004${NC}"
 }
