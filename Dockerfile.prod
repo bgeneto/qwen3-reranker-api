@@ -8,12 +8,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including CUDA development tools
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     gcc \
     g++ \
+    ninja-build \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for Hugging Face
@@ -38,6 +40,8 @@ RUN adduser \
 # Install Python dependencies
 COPY requirements-prod.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir packaging ninja && \
     pip install --no-cache-dir -r requirements-prod.txt
 
 # Copy application code

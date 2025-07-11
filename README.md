@@ -56,6 +56,9 @@ cp config.env.example .env
 
 # Deploy with production configuration
 docker compose -f compose.prod.yaml up -d
+
+# For CPU-only deployment (without flash_attn)
+# Edit Dockerfile.prod to use requirements-prod-cpu.txt instead
 ```
 
 ## 📊 API Endpoints
@@ -145,6 +148,12 @@ python test_api.py --url http://your-server:8004
    - Check HuggingFace cache permissions
    - Verify model name
    - Check internet connection for first download
+
+4. **Flash Attention Installation Fails**
+   - Error: `ModuleNotFoundError: No module named 'packaging'`
+   - Solution: Build dependencies are now included in requirements
+   - Alternative: Remove `flash_attn` from requirements for CPU-only deployment
+   - Note: Flash Attention requires NVCC and CUDA toolkit for GPU builds
 
 ### Logs
 ```bash

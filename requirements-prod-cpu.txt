@@ -1,16 +1,12 @@
-# Build dependencies (required for flash_attn)
-packaging>=21.0
-ninja>=1.10.0
-wheel>=0.37.0
-
+# CPU-only production requirements (without flash_attn)
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 numpy==1.24.3
-torch>=2.0.0
+torch>=2.0.0,<2.1.0
 accelerate>=0.20.0
 transformers>=4.35.0
-flash_attn>=2.0.0
+# flash_attn>=2.0.0  # Commented out for CPU-only deployment
 python-multipart==0.0.6
 prometheus-client==0.19.0
 structlog==23.2.0
