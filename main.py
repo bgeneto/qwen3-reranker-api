@@ -5,8 +5,8 @@ A FastAPI-based service for document reranking using the Qwen/Qwen3-Reranker fam
 This service provides an endpoint to rerank documents based on query relevance, returning results
 in a format compatible with Cohere and Jina APIs. It includes robust, configurable logging.
 
-Author: Bernhard Enders
-Adapted By: Gemini
+Author: Bernhard Enders (bgeneto)
+Adapted By: Gemini/Claude
 Created: July 11, 2025
 Version: 1.1.0
 License: MIT
