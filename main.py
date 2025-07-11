@@ -60,8 +60,9 @@ except ImportError:
 
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from pydantic import BaseModel, Field, field_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -70,6 +71,10 @@ MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3-Reranker-0.6B")
 ENABLE_LOGGING = os.getenv("ENABLE_LOGGING", "false").lower() == "true"
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "reranker_requests.log")
 LOG_METHOD = os.getenv("LOG_METHOD", "file").lower()  # file, stdout, or async
+
+# API Security Configuration
+API_KEY = os.getenv("API_KEY", None)  # Set this in production!
+REQUIRE_API_KEY = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 
 # Production safety limits
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
@@ -259,6 +264,44 @@ def compute_scores(inputs: Dict[str, torch.Tensor]) -> List[float]:
     return scores[:, 1].exp().tolist()
 
 
+# --- API Security Functions ---
+# Security schemes
+security_bearer = HTTPBearer(auto_error=False)
+security_api_key = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def verify_api_key(
+    bearer_token: Optional[HTTPAuthorizationCredentials] = Security(security_bearer),
+    api_key_header: Optional[str] = Security(security_api_key),
+) -> bool:
+    """
+    Verify API key from either Bearer token or X-API-Key header.
+    Returns True if authentication is successful or not required.
+    """
+    if not REQUIRE_API_KEY:
+        return True
+
+    if not API_KEY:
+        # If no API key is configured but required, warn and allow access
+        print("Warning: REQUIRE_API_KEY is True but no API_KEY is set!")
+        return True
+
+    # Check Bearer token first
+    if bearer_token and bearer_token.credentials == API_KEY:
+        return True
+
+    # Check X-API-Key header
+    if api_key_header and api_key_header == API_KEY:
+        return True
+
+    # Authentication failed
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid or missing API key. Use 'Authorization: Bearer <key>' or 'X-API-Key: <key>' header",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 # --- API Definition ---
 app = FastAPI(
     title="Qwen3 Reranker Service",
@@ -364,14 +407,14 @@ METRICS = {
 
 # --- API Endpoints ---
 @app.get("/", summary="Health Check")
-def read_root():
+def read_root(authenticated: bool = Depends(verify_api_key)):
     """A simple health check endpoint."""
     return {"status": "Reranker service API is running", "model": MODEL_NAME}
 
 
 @app.get("/health", summary="Detailed Health Check")
 def health_check():
-    """Detailed health check with system information."""
+    """Detailed health check with system information. This endpoint is unprotected for monitoring systems."""
     uptime = time.time() - METRICS["startup_time"]
     return {
         "status": "healthy",
@@ -381,11 +424,18 @@ def health_check():
         "torch_version": torch.__version__,
         "cuda_available": torch.cuda.is_available(),
         "flash_attention": use_flash_attn,
+        "authentication": {
+            "required": REQUIRE_API_KEY,
+            "configured": API_KEY is not None,
+            "methods": (
+                ["Bearer token", "X-API-Key header"] if REQUIRE_API_KEY else ["None"]
+            ),
+        },
     }
 
 
 @app.get("/metrics", summary="Service Metrics")
-def get_metrics():
+def get_metrics(authenticated: bool = Depends(verify_api_key)):
     """Get service performance metrics."""
     uptime = time.time() - METRICS["startup_time"]
     avg_processing_time = (
@@ -411,10 +461,14 @@ def get_metrics():
 
 
 @app.post("/rerank", response_model=RerankResponse, summary="Rerank Documents")
-def rerank(request: RerankRequest):
+def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)):
     """
     Reranks documents based on a query and returns the top_k results
     with relevance scores.
+
+    Authentication:
+    - Bearer token: Authorization: Bearer <your-api-key>
+    - API key header: X-API-Key: <your-api-key>
     """
     start_time = datetime.now()
     safe_log(

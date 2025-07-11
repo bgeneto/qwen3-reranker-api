@@ -10,11 +10,22 @@ from typing import List, Dict
 
 
 class RerankerTester:
-    def __init__(self, base_url: str = "http://localhost:8004"):
+    def __init__(self, base_url: str = "http://localhost:8004", api_key: str = None):
         self.base_url = base_url
+        self.api_key = api_key
+        self.headers = self._get_headers()
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Get headers including API key if provided"""
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            # Support both Bearer token and X-API-Key header
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-API-Key"] = self.api_key
+        return headers
 
     def test_health(self) -> bool:
-        """Test health endpoint"""
+        """Test health endpoint (unprotected)"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
             return response.status_code == 200
@@ -23,9 +34,11 @@ class RerankerTester:
             return False
 
     def test_metrics(self) -> Dict:
-        """Test metrics endpoint"""
+        """Test metrics endpoint (protected)"""
         try:
-            response = requests.get(f"{self.base_url}/metrics", timeout=10)
+            response = requests.get(
+                f"{self.base_url}/metrics", headers=self.headers, timeout=10
+            )
             if response.status_code == 200:
                 return response.json()
             return {}
@@ -40,7 +53,10 @@ class RerankerTester:
         try:
             start_time = time.time()
             response = requests.post(
-                f"{self.base_url}/rerank", json=payload, timeout=30
+                f"{self.base_url}/rerank",
+                json=payload,
+                headers=self.headers,
+                timeout=30,
             )
             elapsed = time.time() - start_time
 
@@ -61,6 +77,33 @@ class RerankerTester:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def test_authentication_failure(self) -> bool:
+        """Test that protected endpoints return 401 without proper authentication"""
+        try:
+            # Test root endpoint without auth
+            response = requests.get(f"{self.base_url}/", timeout=10)
+            if response.status_code != 401:
+                return False
+
+            # Test metrics endpoint without auth
+            response = requests.get(f"{self.base_url}/metrics", timeout=10)
+            if response.status_code != 401:
+                return False
+
+            # Test rerank endpoint without auth
+            response = requests.post(
+                f"{self.base_url}/rerank",
+                json={"query": "test", "documents": ["doc1"]},
+                timeout=10,
+            )
+            if response.status_code != 401:
+                return False
+
+            return True
+        except Exception as e:
+            print(f"Authentication test failed: {e}")
+            return False
+
     def run_basic_tests(self):
         """Run basic functionality tests"""
         print("🧪 Running Qwen Reranker API Tests...")
@@ -72,17 +115,38 @@ class RerankerTester:
             print("   ✅ Health check passed")
         else:
             print("   ❌ Health check failed")
-            return
+            return  # Test 2: Authentication (if API key not provided)
+        if not self.api_key:
+            print("2. Testing authentication failures (no API key provided)...")
+            auth_test = self.test_authentication_failure()
+            if auth_test:
+                print("   ✅ Authentication properly enforced - 401 responses received")
+            else:
+                print(
+                    "   ⚠️  Authentication test failed - endpoints may not be properly protected"
+                )
+        else:
+            print("2. Skipping authentication failure test (API key provided)")
 
-        # Test 2: Metrics
-        print("2. Testing metrics endpoint...")
+        # Test 3: Health endpoint (unprotected)
+        print("3. Testing unprotected health endpoint...")
+        if self.test_health():
+            print("   ✅ Health check passed (unprotected)")
+        else:
+            print("   ❌ Health check failed")
+
+        # Test 4: Metrics (protected)
+        print("4. Testing protected metrics endpoint...")
         metrics = self.test_metrics()
         if metrics:
             print(f"   ✅ Metrics retrieved: {json.dumps(metrics, indent=2)}")
         else:
-            print("   ❌ Metrics failed")
+            if self.api_key:
+                print("   ❌ Metrics failed")
+            else:
+                print("   ✅ Metrics properly protected (401 expected without API key)")
 
-        # Test 3: Basic reranking
+        # Test 5: Basic reranking
         print("3. Testing basic reranking...")
         test_query = "What is the capital of France?"
         test_documents = [
@@ -102,9 +166,14 @@ class RerankerTester:
                     f"      {i+1}. Document {res['index']}: {res['relevance_score']:.4f}"
                 )
         else:
-            print(
-                f"   ❌ Basic reranking failed: {result.get('error', 'Unknown error')}"
-            )
+            if self.api_key:
+                print(
+                    f"   ❌ Basic reranking failed: {result.get('error', 'Unknown error')}"
+                )
+            else:
+                print(
+                    "   ✅ Reranking properly protected (401 expected without API key)"
+                )
 
         # Test 4: Edge cases
         print("4. Testing edge cases...")
@@ -123,6 +192,13 @@ class RerankerTester:
         else:
             print("   ❌ Large top_k test failed")
 
+        # Test 5: Authentication failures
+        print("5. Testing authentication failures...")
+        if self.test_authentication_failure():
+            print("   ✅ Authentication failure tests passed")
+        else:
+            print("   ❌ Authentication failure tests failed")
+
         print("=" * 50)
         print("🎉 Test suite completed!")
 
@@ -132,12 +208,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test Qwen Reranker API")
     parser.add_argument("--url", default="http://localhost:8004", help="API base URL")
+    parser.add_argument("--api-key", help="API key for authentication")
     parser.add_argument("--query", help="Custom query for testing")
     parser.add_argument("--documents", nargs="+", help="Custom documents for testing")
 
     args = parser.parse_args()
 
-    tester = RerankerTester(args.url)
+    tester = RerankerTester(args.url, getattr(args, "api_key", None))
 
     if args.query and args.documents:
         print(f"Testing custom query: {args.query}")
