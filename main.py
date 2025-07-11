@@ -82,6 +82,17 @@ MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4096"))
 MAX_DOCUMENT_LENGTH = int(os.getenv("MAX_DOCUMENT_LENGTH", "8192"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
 
+# --- Global metrics storage ---
+METRICS = {
+    "requests_total": 0,
+    "requests_successful": 0,
+    "requests_failed": 0,
+    "total_processing_time": 0.0,
+    "total_documents_processed": 0,
+    "model_load_time": 0.0,
+    "startup_time": time.time(),
+}
+
 # --- Logging Configuration ---
 logger = None
 log_queue = None
@@ -218,7 +229,7 @@ try:
 
     print(f"Reranker model loaded on {DEVICE}.")
     # Update metrics
-    globals()["METRICS"]["model_load_time"] = time.time() - model_load_start
+    METRICS["model_load_time"] = time.time() - model_load_start
 
 except Exception as e:
     print(f"Fatal: Failed to load model or tokenizer: {e}")
@@ -393,18 +404,6 @@ class RerankResult(BaseModel):
 
 class RerankResponse(BaseModel):
     results: List[RerankResult]
-
-
-# --- Global metrics storage ---
-METRICS = {
-    "requests_total": 0,
-    "requests_successful": 0,
-    "requests_failed": 0,
-    "total_processing_time": 0.0,
-    "total_documents_processed": 0,
-    "model_load_time": 0.0,
-    "startup_time": time.time(),
-}
 
 
 # --- API Endpoints ---
