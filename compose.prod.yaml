@@ -14,10 +14,8 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     env_file:
-      - config.env
+      - .env
     environment:
-      - TZ=America/Sao_Paulo
-      # Uvicorn optimizations
       - UVICORN_WORKERS=1
       - UVICORN_LOOP=uvloop
       - UVICORN_HTTP=httptools

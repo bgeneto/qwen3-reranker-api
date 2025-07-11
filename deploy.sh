@@ -1,12 +1,12 @@
 #!/bin/bash
-# Deployment script for Qwen Reranker Service
+# Deployment script for Qwen3 Reranker Service
 
 set -e
 
 # Configuration
 COMPOSE_FILE="compose.yaml"
 PROD_COMPOSE_FILE="compose.prod.yaml"
-CONFIG_FILE="config.env"
+CONFIG_FILE=".env"
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,7 +38,7 @@ check_requirements() {
 
 setup_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${YELLOW}Creating config.env from template...${NC}"
+        echo -e "${YELLOW}Creating .env from template...${NC}"
         cp config.env.example "$CONFIG_FILE"
         echo -e "${GREEN}✅ Created $CONFIG_FILE - please review and modify as needed${NC}"
     fi

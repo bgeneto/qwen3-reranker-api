@@ -60,6 +60,7 @@ cache/
 # *.onnx
 
 # Environment configuration (contains secrets)
+.env
 config.env
 
 # Temporary files

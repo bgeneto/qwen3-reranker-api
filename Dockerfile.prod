@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Copy application code
 COPY main.py .
-COPY config.env.example ./config.env
+COPY config.env.example ./.env
 
 # Set proper permissions
 RUN chown -R appuser:appuser /app

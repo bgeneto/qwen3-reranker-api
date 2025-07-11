@@ -153,7 +153,7 @@ services:
    # Monitor container resources
    docker stats qwen3-reranker-prod
 
-   # Reduce batch size in config.env
+   # Reduce batch size in .env
    BATCH_SIZE=8
    ```
 

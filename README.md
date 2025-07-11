@@ -27,8 +27,8 @@ A production-ready FastAPI service for document reranking using Qwen3-Reranker m
 chmod +x deploy.sh
 
 # Copy and configure environment
-cp config.env.example config.env
-# Edit config.env with your settings
+cp config.env.example .env
+# Edit .env with your settings
 
 # Start production environment
 ./deploy.sh prod
@@ -51,8 +51,8 @@ cp config.env.example config.env
 ```
 ```bash
 # Copy and configure environment
-cp config.env.example config.env
-# Edit config.env with your settings
+cp config.env.example .env
+# Edit .env with your settings
 
 # Deploy with production configuration
 docker-compose -f compose.prod.yaml up -d
@@ -76,16 +76,16 @@ docker-compose -f compose.prod.yaml up -d
 |----------|---------|-------------|
 | `MODEL_NAME` | `Qwen/Qwen3-Reranker-0.6B` | HuggingFace model identifier |
 | `MAX_DOCUMENTS` | `100` | Maximum documents per request |
-| `MAX_QUERY_LENGTH` | `2048` | Maximum query length |
-| `MAX_DOCUMENT_LENGTH` | `4096` | Maximum document length |
+| `MAX_QUERY_LENGTH` | `4096` | Maximum query length |
+| `MAX_DOCUMENT_LENGTH` | `8192` | Maximum document length |
 | `ENABLE_LOGGING` | `false` | Enable request logging |
-| `LOG_METHOD` | `file` | Logging method (file/stdout/async) |
+| `LOG_METHOD` | `async` | Logging method (file/stdout/async) |
 | `BATCH_SIZE` | `16` | Model inference batch size |
 
 ### Model Options
 - `Qwen/Qwen3-Reranker-0.6B` (fastest, least accurate)
-- `Qwen/Qwen3-Reranker-1.8B` (balanced)
-- `Qwen/Qwen3-Reranker-14B` (best quality, requires more VRAM)
+- `Qwen/Qwen3-Reranker-4B` (balanced)
+- `Qwen/Qwen3-Reranker-8B` (best quality, requires more VRAM)
 
 ## 🧪 Testing
 
@@ -168,7 +168,7 @@ docker run -d \
   -p 8004:8000 \
   -v ./logs:/app/logs \
   -v ./hf_cache:/app/cache \
-  --env-file config.env \
+  --env-file .env \
   qwen3-reranker:prod
 
 # Check container health

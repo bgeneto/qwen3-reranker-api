@@ -70,7 +70,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3-Reranker-0.6B")
 ENABLE_LOGGING = os.getenv("ENABLE_LOGGING", "false").lower() == "true"
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "reranker_requests.log")
-LOG_METHOD = os.getenv("LOG_METHOD", "file").lower()  # file, stdout, or async
+LOG_METHOD = os.getenv("LOG_METHOD", "async").lower()  # file, stdout, or async
 
 # API Security Configuration
 API_KEY = os.getenv("API_KEY", None)  # Set this in production!
@@ -78,9 +78,9 @@ REQUIRE_API_KEY = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 
 # Production safety limits
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
-MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "2048"))
-MAX_DOCUMENT_LENGTH = int(os.getenv("MAX_DOCUMENT_LENGTH", "4096"))
-REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "300"))  # seconds
+MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4096"))
+MAX_DOCUMENT_LENGTH = int(os.getenv("MAX_DOCUMENT_LENGTH", "8192"))
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
 
 # --- Logging Configuration ---
 logger = None
