@@ -15,9 +15,6 @@ RUN apt-get update && apt-get install -y \
     python-is-python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.11 as the default python3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-
 # Prevents Python from writing pyc files and keeps Python from buffering stdout and stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
