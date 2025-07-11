@@ -1,0 +1,68 @@
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim AS base
+
+# Prevents Python from writing pyc files and keeps Python from buffering stdout and stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables for Hugging Face
+ENV HF_HOME=/app/cache \
+    NLTK_DATA=/app/cache \
+    TRANSFORMERS_CACHE=/app/cache
+
+# Create cache and logs directories
+RUN mkdir -p /app/cache /app/logs
+
+# Create non-privileged user
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
+
+# Install Python dependencies
+COPY requirements-prod.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements-prod.txt
+
+# Copy application code
+COPY main.py .
+COPY config.env.example ./config.env
+
+# Set proper permissions
+RUN chown -R appuser:appuser /app
+
+# Switch to non-privileged user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Production command with Uvicorn only (optimized for single GPU workload)
+CMD ["uvicorn", "main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--log-level", "info", \
+     "--access-log", \
+     "--loop", "uvloop", \
+     "--http", "httptools"]

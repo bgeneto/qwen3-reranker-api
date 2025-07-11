@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+numpy
+torch
+accelerate
+transformers
+flash_attn
