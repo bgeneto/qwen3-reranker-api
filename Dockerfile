@@ -67,16 +67,33 @@ WORKDIR /app
 # Create cache and logs directories with proper permissions
 RUN mkdir -p /app/cache /app/logs
 
-# Create non-privileged user
-ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
+# Create non-privileged user and group
+ARG UID=1000
+ARG GID=1000
+RUN set -e; \
+    # Create group if it doesn't exist
+    if ! getent group "${GID}" >/dev/null 2>&1; then \
+        groupadd --gid "${GID}" appgroup; \
+    fi; \
+    # Get the group name for the GID
+    GROUP_NAME=$(getent group "${GID}" | cut -d: -f1); \
+    # Create user if it doesn't exist, or modify existing user
+    if ! getent passwd "${UID}" >/dev/null 2>&1; then \
+        adduser \
+            --disabled-password \
+            --gecos "" \
+            --home "/nonexistent" \
+            --shell "/sbin/nologin" \
+            --no-create-home \
+            --uid "${UID}" \
+            --gid "${GID}" \
+            appuser; \
+    else \
+        # User exists, modify it to use our GID
+        usermod -g "${GID}" $(getent passwd "${UID}" | cut -d: -f1); \
+    fi; \
+    # Get the user name for the UID for later use
+    USER_NAME=$(getent passwd "${UID}" | cut -d: -f1)
 
 # Copy Python packages from builder stage
 # First, copy the entire Python installation to ensure all packages are included
@@ -86,13 +103,16 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
-COPY --chown=appuser:appuser main.py .
+COPY main.py .
 
-# Set proper permissions for cache and logs
-RUN chown -R appuser:appuser /app
+# Set proper permissions for cache and logs using the UID:GID directly
+ARG UID=1000
+ARG GID=1000
+RUN chown -R ${UID}:${GID} /app
 
-# Switch to non-privileged user
-USER appuser
+# Switch to non-privileged user using UID
+ARG UID=1000
+USER ${UID}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \

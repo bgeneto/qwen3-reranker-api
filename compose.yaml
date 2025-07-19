@@ -4,11 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        UID: 10001
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     image: qwen3-reranker-api
     container_name: qwen3-reranker-api
     hostname: qwen3-reranker-api
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "8004:8000"
     volumes:
