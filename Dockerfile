@@ -1,17 +1,12 @@
 # Multi-stage build for production optimization
-# Stage 1: Build dependencies
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
+# Stage 1: Build dependencies (needs CUDA for flash-attn compilation)
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
 
-# Install Python and build dependencies
+# Install Python and minimal build dependencies
 RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    curl \
-    wget \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y \
-    python3.12 \
-    python3.12-dev \
-    python3.12-venv \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
     python3-pip \
     gcc \
     g++ \
@@ -20,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set build environment variables
@@ -46,11 +41,11 @@ FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS production
 
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y \
-    python3.12 \
+    python3.11 \
     python3-pip \
     curl \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set production environment variables
@@ -80,7 +75,7 @@ RUN adduser \
     appuser
 
 # Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Copy application code

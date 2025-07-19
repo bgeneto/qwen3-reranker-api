@@ -26,7 +26,7 @@ git clone <repository-url>
 cd qwen3-reranker-api
 
 # Copy and edit configuration
-cp example.env .env
+cp config.env.example .env
 nano .env  # Edit as needed
 ```
 
@@ -65,7 +65,7 @@ Key settings in `.env`:
 
 ```bash
 # Model Configuration
-MODEL_NAME=Qwen/Qwen3-Reranker-4B
+MODEL_NAME=Qwen/Qwen3-Reranker-0.6B
 
 # GPU Performance Settings
 BATCH_SIZE=32                    # Adjust based on GPU memory
