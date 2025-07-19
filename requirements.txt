@@ -10,9 +10,6 @@ setuptools>=65.0
 numpy==1.24.4
 torch>=2.1.0,<2.5.0
 
-# Flash attention for GPU acceleration (installed separately from pre-built wheel in Dockerfile)
-# flash-attn>=2.5.0,<2.7.0 ; python_version>="3.8" and platform_system=="Linux"
-
 # ML frameworks and utilities
 accelerate>=0.25.0
 transformers>=4.36.0
