@@ -28,13 +28,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /build
 
+# Create virtual environment for better isolation
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip setuptools wheel && \
-    python -m pip install --no-cache-dir packaging ninja && \
-    python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124 && \
-    python -m pip install --no-cache-dir -r requirements.txt
+    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
+    /opt/venv/bin/python -m pip install --no-cache-dir packaging ninja && \
+    /opt/venv/bin/python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124 && \
+    /opt/venv/bin/python -m pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Production runtime
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS production
@@ -75,8 +79,11 @@ RUN adduser \
     appuser
 
 # Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
+# First, copy the entire Python installation to ensure all packages are included
+COPY --from=builder /opt/venv /opt/venv
+
+# Add virtual environment to PATH
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY --chown=appuser:appuser main.py .
@@ -95,7 +102,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
 EXPOSE 8000
 
 # Production command optimized for performance
-CMD ["uvicorn", "main:app", \
+CMD ["/opt/venv/bin/uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--workers", "1", \
