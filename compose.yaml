@@ -1,12 +1,13 @@
 services:
-  qwen3-reranker:
+  qwen3-reranker-api:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         UID: 10001
-    image: qwen3-reranker:production
-    container_name: qwen3-reranker-prod
+    image: qwen3-reranker-api
+    container_name: qwen3-reranker-api
+    hostname: qwen3-reranker-api
     restart: unless-stopped
     ports:
       - "8004:8000"

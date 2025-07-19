@@ -132,7 +132,7 @@ docker compose logs -f
 
 ### Monitor Resources
 ```bash
-docker stats qwen3-reranker-prod
+docker stats qwen3-reranker-api
 nvidia-smi  # GPU monitoring
 ```
 
