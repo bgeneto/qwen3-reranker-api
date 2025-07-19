@@ -8,10 +8,11 @@ setuptools>=65.0
 
 # Core ML dependencies (pinned for stability)
 numpy==1.24.4
-torch>=2.1.0
+torch>=2.1.0,<2.5.0
 
-# Flash attention for GPU acceleration
-flash-attn>=2.5.0
+# Flash attention for GPU acceleration (compatible with PyTorch 2.1-2.4)
+# Note: flash-attn installation can be finicky. If it fails, the model will fall back to standard attention.
+flash-attn>=2.5.0,<2.7.0 ; python_version>="3.8" and platform_system=="Linux"
 
 # ML frameworks and utilities
 accelerate>=0.25.0
