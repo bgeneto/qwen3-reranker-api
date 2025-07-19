@@ -18,7 +18,6 @@ Dependencies:
     - torch
     - transformers
     - numpy
-    - flash_attn
 
 Environment Variables:
     MODEL_NAME: HuggingFace model identifier (default: Qwen/Qwen3-Reranker-4B)
