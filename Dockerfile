@@ -32,12 +32,17 @@ WORKDIR /build
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy and install Python dependencies
+# Copy and install Python dependencies with pre-built flash-attn
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
     /opt/venv/bin/python -m pip install --no-cache-dir packaging ninja && \
     /opt/venv/bin/python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124 && \
+    echo "Installing flash-attn from pre-built wheel for CUDA 12.4..." && \
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        flash-attn --index-url https://download.pytorch.org/whl/cu124 || \
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        "flash-attn>=2.5.0" --find-links https://github.com/Dao-AILab/flash-attention/releases && \
     /opt/venv/bin/python -m pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Production runtime
@@ -67,33 +72,12 @@ WORKDIR /app
 # Create cache and logs directories with proper permissions
 RUN mkdir -p /app/cache /app/logs
 
-# Create non-privileged user and group
+# Create non-root user with specified UID and GID
 ARG UID=1000
 ARG GID=1000
-RUN set -e; \
-    # Create group if it doesn't exist
-    if ! getent group "${GID}" >/dev/null 2>&1; then \
-        groupadd --gid "${GID}" appgroup; \
-    fi; \
-    # Get the group name for the GID
-    GROUP_NAME=$(getent group "${GID}" | cut -d: -f1); \
-    # Create user if it doesn't exist, or modify existing user
-    if ! getent passwd "${UID}" >/dev/null 2>&1; then \
-        adduser \
-            --disabled-password \
-            --gecos "" \
-            --home "/nonexistent" \
-            --shell "/sbin/nologin" \
-            --no-create-home \
-            --uid "${UID}" \
-            --gid "${GID}" \
-            appuser; \
-    else \
-        # User exists, modify it to use our GID
-        usermod -g "${GID}" $(getent passwd "${UID}" | cut -d: -f1); \
-    fi; \
-    # Get the user name for the UID for later use
-    USER_NAME=$(getent passwd "${UID}" | cut -d: -f1)
+RUN groupadd -f -g ${GID} appuser && \
+    useradd -o -r -u ${UID} -g ${GID} -d /srv -s /bin/bash appuser 2>/dev/null || \
+    echo "User/group with UID ${UID}/GID ${GID} already exists, continuing..."
 
 # Copy Python packages from builder stage
 # First, copy the entire Python installation to ensure all packages are included
@@ -105,14 +89,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY main.py .
 
-# Set proper permissions for cache and logs using the UID:GID directly
-ARG UID=1000
-ARG GID=1000
+# Set proper permissions for cache and logs
 RUN chown -R ${UID}:${GID} /app
 
-# Switch to non-privileged user using UID
-ARG UID=1000
-USER ${UID}
+# Switch to non-privileged user
+USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
