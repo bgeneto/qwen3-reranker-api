@@ -18,7 +18,8 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
     /opt/venv/bin/python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124 && \
-    /opt/venv/bin/python -m pip install --no-cache-dir -r requirements.txt
+    /opt/venv/bin/python -m pip install --no-cache-dir -r requirements.txt && \
+    /opt/venv/bin/python -m pip install --no-cache-dir uvicorn[standard]
 
 # Stage 2: Production runtime
 FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS production
@@ -39,7 +40,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/app/cache \
     TRANSFORMERS_CACHE=/app/cache \
     CUDA_HOME=/usr/local/cuda \
-    PATH=/usr/local/cuda/bin:$PATH \
+    PATH="/opt/venv/bin:/usr/local/cuda/bin:$PATH" \
     LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 WORKDIR /app
@@ -55,14 +56,18 @@ RUN groupadd -f -g ${GID} appuser && \
     echo "User/group with UID ${UID}/GID ${GID} already exists, continuing..."
 
 # Copy Python packages from builder stage
-# First, copy the entire Python installation to ensure all packages are included
 COPY --from=builder /opt/venv /opt/venv
 
-# Add virtual environment to PATH
+# Ensure the virtual environment is properly activated
 ENV PATH="/opt/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/opt/venv"
 
 # Copy application code
 COPY main.py .
+
+# Verify uvicorn installation and create symlink if needed
+RUN /opt/venv/bin/python -m pip list | grep uvicorn || \
+    /opt/venv/bin/python -m pip install uvicorn[standard]
 
 # Set proper permissions for cache and logs
 RUN chown -R ${UID}:${GID} /app
@@ -78,7 +83,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
 EXPOSE 8000
 
 # Production command optimized for performance
-CMD ["/opt/venv/bin/uvicorn", "main:app", \
+CMD ["/opt/venv/bin/python", "-m", "uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--workers", "1", \
