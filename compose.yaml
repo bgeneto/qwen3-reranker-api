@@ -26,7 +26,7 @@ services:
       - UVICORN_LOOP=uvloop
       - UVICORN_HTTP=httptools
       # GPU memory optimization
-      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
