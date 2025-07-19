@@ -1,6 +1,8 @@
 # Environment
 .env
 .env.local
+.env
+config.env
 
 # Python
 __pycache__/
@@ -65,10 +67,6 @@ cache/
 # *.bin
 # *.safetensors
 # *.onnx
-
-# Environment configuration (contains secrets)
-.env
-config.env
 
 # Generated compose file (copied from compose.prod.yaml or compose.cpu.yaml)
 compose.yaml
