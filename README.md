@@ -26,7 +26,7 @@ git clone <repository-url>
 cd qwen3-reranker-api
 
 # Copy and edit configuration
-cp config.env.example .env
+cp example.env .env
 nano .env  # Edit as needed
 ```
 
