@@ -1,28 +1,74 @@
-ARG PYTHON_VERSION=3.12
-FROM python:${PYTHON_VERSION}-slim AS base
+# Multi-stage build for production optimization
+# Stage 1: Build dependencies
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
 
-# Prevents Python from writing pyc files.
-ENV PYTHONDONTWRITEBYTECODE=1
+# Install Python and build dependencies
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    curl \
+    wget \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    python3-pip \
+    gcc \
+    g++ \
+    ninja-build \
+    cmake \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
-# Keeps Python from buffering stdout and stderr to avoid situations where
-# the application crashes without emitting any logs due to buffering.
-ENV PYTHONUNBUFFERED=1
+# Set build environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+WORKDIR /build
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir packaging ninja && \
+    python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124 && \
+    python -m pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Production runtime
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS production
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3-pip \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+# Set production environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    HF_HOME=/app/cache \
+    TRANSFORMERS_CACHE=/app/cache \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 WORKDIR /app
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Create cache and logs directories with proper permissions
+RUN mkdir -p /app/cache /app/logs
 
-# Set the Hugging Face cache directory to a specific path inside the container
-ENV HF_HOME=/app/cache
-ENV NLTK_DATA=$HF_HOME
-ENV POETRY_NO_INTERACTION=1
-
-# Create the cache directory
-RUN mkdir -p $HF_HOME
-
-# Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/go/dockerfile-user-best-practices/
+# Create non-privileged user
 ARG UID=10001
 RUN adduser \
     --disabled-password \
@@ -33,22 +79,34 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# into this layer.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+# Copy Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
-# Switch to the non-privileged user to run the application.
+# Copy application code
+COPY --chown=appuser:appuser main.py .
+
+# Set proper permissions for cache and logs
+RUN chown -R appuser:appuser /app
+
+# Switch to non-privileged user
 USER appuser
 
-# Copy the source code into the container.
-COPY ./main.py /app/main.py
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Expose the port that the application listens on.
+# Expose port
 EXPOSE 8000
 
-# Run the application.
-CMD uvicorn 'main:app' --host=0.0.0.0 --port=8000
+# Production command optimized for performance
+CMD ["uvicorn", "main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--log-level", "info", \
+     "--access-log", \
+     "--loop", "uvloop", \
+     "--http", "httptools", \
+     "--no-server-header", \
+     "--date-header"]

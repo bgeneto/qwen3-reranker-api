@@ -1,3 +1,7 @@
+# Environment
+.env
+.env.local
+
 # Python
 __pycache__/
 *.py[cod]
@@ -19,10 +23,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # Virtual environments
-.env
 .venv
 env/
 venv/
@@ -41,13 +43,18 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Application data
+hf_cache/
 logs/
-*.log.*
+*.log
 
 # Docker
-.docker/
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+.tmp/
 
 # Hugging Face cache
 hf_cache/

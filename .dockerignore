@@ -1,0 +1,57 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# Development files
+.env*
+docker-compose.*.yml
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Application data (will be mounted as volumes)
+hf_cache/
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+*~
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE files
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
