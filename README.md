@@ -65,7 +65,7 @@ Key settings in `.env`:
 
 ```bash
 # Model Configuration
-MODEL_NAME=Qwen/Qwen3-Reranker-0.6B
+MODEL_NAME=Qwen/Qwen3-Reranker-4B
 
 # GPU Performance Settings
 BATCH_SIZE=32                    # Adjust based on GPU memory

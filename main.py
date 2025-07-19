@@ -21,7 +21,7 @@ Dependencies:
     - flash_attn
 
 Environment Variables:
-    MODEL_NAME: HuggingFace model identifier (default: Qwen/Qwen3-Reranker-0.6B)
+    MODEL_NAME: HuggingFace model identifier (default: Qwen/Qwen3-Reranker-4B)
     ENABLE_LOGGING: Enable request/response logging (default: false)
     LOG_FILE_PATH: Path to log file (default: reranker_requests.log)
     LOG_METHOD: Logging method - file, stdout, or async (default: file)
@@ -76,7 +76,7 @@ from pydantic import BaseModel, Field, field_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # --- Environment Configuration ---
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3-Reranker-0.6B")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3-Reranker-4B")
 ENABLE_LOGGING = os.getenv("ENABLE_LOGGING", "false").lower() == "true"
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "reranker_requests.log")
 LOG_METHOD = os.getenv("LOG_METHOD", "async").lower()  # file, stdout, or async
