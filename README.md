@@ -15,8 +15,8 @@ A high-performance GPU-accelerated FastAPI service for document reranking using 
 - Docker Engine 24.0+ with BuildKit
 - Docker Compose 2.20+
 - NVIDIA Container Toolkit
-- NVIDIA GPU with 6GB+ VRAM
-- CUDA 12.4 compatible drivers
+- NVIDIA GPU with 12GB+ VRAM
+- CUDA 12.6 compatible drivers
 
 ## 🔧 Quick Start
 

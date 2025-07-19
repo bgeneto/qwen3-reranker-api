@@ -82,14 +82,16 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
 # Expose port
 EXPOSE 8000
 
+# Override NVIDIA entrypoint to run uvicorn with the Python interpreter directly
+ENTRYPOINT ["/opt/venv/bin/python", "-m", "uvicorn"]
 # Production command optimized for performance
-CMD ["/opt/venv/bin/python", "-m", "uvicorn", "main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "1", \
-     "--log-level", "info", \
-     "--access-log", \
-     "--loop", "uvloop", \
-     "--http", "httptools", \
-     "--no-server-header", \
+CMD ["main:app",
+     "--host", "0.0.0.0",
+     "--port", "8000",
+     "--workers", "1",
+     "--log-level", "info",
+     "--access-log",
+     "--loop", "uvloop",
+     "--http", "httptools",
+     "--no-server-header",
      "--date-header"]
