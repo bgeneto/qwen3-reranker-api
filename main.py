@@ -89,6 +89,7 @@ MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4096"))
 MAX_DOCUMENT_LENGTH = int(os.getenv("MAX_DOCUMENT_LENGTH", "8192"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "8"))  # Default to conservative batch size
 
 # --- Global metrics storage ---
 METRICS = {
@@ -166,6 +167,21 @@ def safe_log(log_func, message, *args, **kwargs):
             print(f"Warning: Logging failed: {e}")
 
 
+def log_gpu_memory(stage: str = ""):
+    """Log current GPU memory usage for debugging."""
+    if DEVICE == "cuda" and torch.cuda.is_available():
+        try:
+            memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+            memory_reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+            max_memory = torch.cuda.max_memory_allocated() / 1024**3  # GB
+            safe_log(
+                logger.info,
+                f"GPU Memory {stage}: Allocated={memory_allocated:.2f}GB, Reserved={memory_reserved:.2f}GB, Max={max_memory:.2f}GB",
+            )
+        except Exception as e:
+            safe_log(logger.warning, f"Failed to get GPU memory info: {e}")
+
+
 def cleanup_logging():
     """Clean up logging resources."""
     global queue_listener
@@ -187,47 +203,12 @@ SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 try:
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, padding_side="left")
 
-    # Check for flash_attention_2 availability
-    use_flash_attn = False
-    if DEVICE == "cuda":
-        try:
-            # First check if flash_attn package is installed
-            import flash_attn
-
-            # Then test if the model supports flash_attention_2
-            model_test = AutoModelForCausalLM.from_pretrained(
-                MODEL_NAME,
-                torch_dtype=DTYPE,
-                attn_implementation="flash_attention_2",
-            ).to(
-                DEVICE
-            )  # Move test model to GPU
-            del model_test  # free memory
-            use_flash_attn = True
-            print("Flash Attention 2 is available. Using for faster inference.")
-        except ImportError:
-            print(
-                "Warning: flash_attn package not installed. Falling back to standard attention."
-            )
-        except (ValueError, Exception) as e:
-            print(
-                f"Warning: Flash Attention 2 not compatible with this model or setup: {e}. Falling back to standard attention."
-            )
-
-    if use_flash_attn:
-        reranker_model = (
-            AutoModelForCausalLM.from_pretrained(
-                MODEL_NAME, torch_dtype=DTYPE, attn_implementation="flash_attention_2"
-            )
-            .to(DEVICE)
-            .eval()
-        )
-    else:
-        reranker_model = (
-            AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE)
-            .to(DEVICE)
-            .eval()
-        )
+    # Load model with standard attention
+    reranker_model = (
+        AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE)
+        .to(DEVICE)
+        .eval()
+    )
 
     # Pre-tokenize prefixes and suffixes for efficiency
     token_false_id = tokenizer.convert_tokens_to_ids("no")
@@ -236,6 +217,7 @@ try:
     suffix_tokens = tokenizer.encode(SUFFIX, add_special_tokens=False)
 
     print(f"Reranker model loaded on {DEVICE}.")
+    log_gpu_memory("after model load")
     # Update metrics
     METRICS["model_load_time"] = time.time() - model_load_start
 
@@ -247,9 +229,7 @@ except Exception as e:
 # --- Reranker Helper Functions ---
 def format_instruction(query: str, doc: str, instruction: Optional[str] = None) -> str:
     if instruction is None:
-        instruction = (
-            "Given a web search query, retrieve relevant passages that answer the query"
-        )
+        instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
     return f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}"
 
 
@@ -274,15 +254,27 @@ def process_inputs(pairs: List[str]) -> Dict[str, torch.Tensor]:
 
 @torch.no_grad()
 def compute_scores(inputs: Dict[str, torch.Tensor]) -> List[float]:
-    logits = reranker_model(**inputs).logits[:, -1, :]
-    true_scores = logits[:, token_true_id]
-    false_scores = logits[:, token_false_id]
+    try:
+        logits = reranker_model(**inputs).logits[:, -1, :]
+        true_scores = logits[:, token_true_id]
+        false_scores = logits[:, token_false_id]
 
-    scores = torch.stack([false_scores, true_scores], dim=1)
-    scores = torch.nn.functional.log_softmax(scores, dim=1)
+        scores = torch.stack([false_scores, true_scores], dim=1)
+        scores = torch.nn.functional.log_softmax(scores, dim=1)
 
-    # Return the probability of "true"
-    return scores[:, 1].exp().tolist()
+        # Return the probability of "true" and move to CPU to free GPU memory
+        result = scores[:, 1].exp().cpu().tolist()
+
+        # Clean up GPU tensors
+        del logits, true_scores, false_scores, scores
+
+        return result
+    except torch.cuda.OutOfMemoryError as e:
+        # Clear cache and retry with smaller effective batch
+        torch.cuda.empty_cache()
+        raise RuntimeError(
+            f"CUDA OOM in compute_scores. Try reducing BATCH_SIZE. Current: {BATCH_SIZE}"
+        ) from e
 
 
 # --- API Security Functions ---
@@ -435,7 +427,6 @@ def health_check():
         "uptime_seconds": round(uptime, 2),
         "torch_version": torch.__version__,
         "cuda_available": torch.cuda.is_available(),
-        "flash_attention": use_flash_attn,
         "authentication": {
             "required": REQUIRE_API_KEY,
             "configured": API_KEY is not None,
@@ -502,22 +493,27 @@ def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)
     if not request.documents:
         return {"results": []}
 
+    log_gpu_memory("before processing")
+
     # Create pairs of (query, document) for the model
-    instruction = (
-        "Given a web search query, retrieve relevant passages that answer the query"
-    )
+    instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
     pairs = [
         format_instruction(request.query, doc, instruction) for doc in request.documents
     ]
 
     # Process in batches to avoid OOM on long document lists
-    batch_size = 16  # Can be tuned based on available VRAM
     all_scores = []
-    for i in range(0, len(pairs), batch_size):
-        batch_pairs = pairs[i : i + batch_size]
+    for i in range(0, len(pairs), BATCH_SIZE):
+        batch_pairs = pairs[i : i + BATCH_SIZE]
         inputs = process_inputs(batch_pairs)
         scores = compute_scores(inputs)
         all_scores.extend(scores)
+
+        # Clear CUDA cache after each batch to prevent memory accumulation
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+
+    log_gpu_memory("after processing")
 
     # Associate scores with original document indices
     indexed_results = [

@@ -39,7 +39,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 12G
+          memory: 20G # Increased for 24GB GPU
         reservations:
           devices:
             - driver: nvidia

@@ -4,7 +4,7 @@ A high-performance GPU-accelerated FastAPI service for document reranking using 
 
 ## 🚀 Features
 
-- **GPU-Accelerated** with CUDA 12.4 and Flash Attention
+- **GPU-Accelerated** with CUDA 12.6 optimization
 - **Docker Containerized** for easy deployment
 - **High Performance** with uvloop, httptools, and optimized PyTorch
 - **API Compatible** with Cohere and Jina reranking formats
@@ -165,7 +165,7 @@ BATCH_SIZE=16
 docker compose logs
 
 # Verify GPU access
-docker run --rm --gpus all nvidia/cuda:12.4.1-runtime-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.6.3-runtime-ubuntu24.04 nvidia-smi
 ```
 
 **Slow Performance:**
@@ -191,7 +191,7 @@ The service uses a multi-stage Docker build with:
 - **Builder Stage**: CUDA development environment for compiling dependencies
 - **Runtime Stage**: Minimal CUDA runtime for optimized deployment
 - **Security**: Non-root user, read-only filesystem, network isolation
-- **Performance**: Flash Attention, uvloop, optimized PyTorch settings
+- **Performance**: uvloop, optimized PyTorch settings
 
 ## 📝 License
 
