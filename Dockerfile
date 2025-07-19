@@ -65,10 +65,6 @@ ENV VIRTUAL_ENV="/opt/venv"
 # Copy application code
 COPY main.py .
 
-# Verify uvicorn installation and create symlink if needed
-RUN python3 -m pip list | grep uvicorn || \
-    python3 -m pip install uvicorn[standard]
-
 # Set proper permissions for cache and logs
 RUN chown -R ${UID}:${GID} /app
 
