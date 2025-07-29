@@ -229,7 +229,8 @@ except Exception as e:
 # --- Reranker Helper Functions ---
 def format_instruction(query: str, doc: str, instruction: Optional[str] = None) -> str:
     if instruction is None:
-        instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
+        # instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
+        instruction = "Given a web search query, retrieve relevant passages that answer the query"  # using the default instruction from the Qwen3-Reranker model achieved best results
     return f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}"
 
 
@@ -496,7 +497,8 @@ def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)
     log_gpu_memory("before processing")
 
     # Create pairs of (query, document) for the model
-    instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
+    # instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query"
+    instruction = "Given a web search query, retrieve relevant passages that answer the query"  # using the default instruction from the Qwen3-Reranker model achieved best results
     pairs = [
         format_instruction(request.query, doc, instruction) for doc in request.documents
     ]
