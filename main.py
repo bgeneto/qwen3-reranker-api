@@ -464,6 +464,7 @@ def get_metrics(authenticated: bool = Depends(verify_api_key)):
     }
 
 
+@app.post("/v1/rerank", response_model=RerankResponse, summary="Rerank Documents")
 @app.post("/rerank", response_model=RerankResponse, summary="Rerank Documents")
 def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)):
     """
