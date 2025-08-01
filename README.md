@@ -75,10 +75,42 @@ PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 # API Limits
 MAX_DOCUMENTS=100
 
+# Uvicorn Performance Settings
+UVICORN_WORKERS=1               # Keep at 1 for GPU models
+UVICORN_MAX_CONNECTIONS=2000    # Max concurrent connections
+UVICORN_LIMIT_CONCURRENCY=1000  # Max concurrent requests
+UVICORN_BACKLOG=2048           # Connection backlog
+UVICORN_TIMEOUT_KEEP_ALIVE=5   # Keep-alive timeout (seconds)
+
 # Logging
 ENABLE_LOGGING=true
 LOG_LEVEL=INFO
 ```
+
+### Uvicorn Performance Tuning
+
+For high-load scenarios, adjust these settings in your `.env`:
+
+```bash
+# High-load configuration
+UVICORN_MAX_CONNECTIONS=4000    # Total connections server accepts
+UVICORN_LIMIT_CONCURRENCY=2000  # Max concurrent request processing
+UVICORN_BACKLOG=4096           # Queue size for pending connections
+UVICORN_TIMEOUT_KEEP_ALIVE=30  # Connection keep-alive time
+
+# Memory-constrained configuration
+UVICORN_MAX_CONNECTIONS=1000
+UVICORN_LIMIT_CONCURRENCY=500
+UVICORN_BACKLOG=1024
+BATCH_SIZE=16
+```
+
+**Key Parameters:**
+- `UVICORN_WORKERS`: Always keep at 1 for GPU models
+- `UVICORN_MAX_CONNECTIONS`: Total TCP connections the server accepts
+- `UVICORN_LIMIT_CONCURRENCY`: Maximum requests processed simultaneously
+- `UVICORN_BACKLOG`: Connection queue size when at max connections
+- `UVICORN_TIMEOUT_KEEP_ALIVE`: How long to keep idle connections open
 
 ## 📚 API Usage
 
@@ -151,10 +183,32 @@ docker system prune -f
 
 ### Common Issues
 
+**429 Too Many Requests:**
+```bash
+# Increase connection limits in .env
+UVICORN_MAX_CONNECTIONS=4000
+UVICORN_LIMIT_CONCURRENCY=2000
+UVICORN_BACKLOG=4096
+
+# Then restart
+docker compose restart
+```
+
 **Out of GPU Memory:**
 ```bash
-# Reduce batch size in .env
+# Keep workers at 1 for GPU models (don't increase UVICORN_WORKERS)
+UVICORN_WORKERS=1
+# Reduce batch size instead
 BATCH_SIZE=16
+```
+
+**Connection Timeouts:**
+```bash
+# Increase keep-alive timeout
+UVICORN_TIMEOUT_KEEP_ALIVE=30
+
+# Increase backlog for high load
+UVICORN_BACKLOG=4096
 ```
 
 **Container Won't Start:**
@@ -174,6 +228,9 @@ nvidia-smi
 # Adjust batch size and thread count in .env
 BATCH_SIZE=24
 TORCH_THREADS=2
+
+# Monitor concurrent connections
+docker compose logs | grep -i "connection"
 ```
 
 ## 📈 Performance
