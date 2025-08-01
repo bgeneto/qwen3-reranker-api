@@ -86,8 +86,7 @@ REQUIRE_API_KEY = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 
 # Production safety limits
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
-MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4096"))
-# MAX_DOCUMENT_LENGTH removed - let tokenizer handle document truncation based on model's context window
+# MAX_QUERY_LENGTH and MAX_DOCUMENT_LENGTH removed - let tokenizer handle text truncation based on model's context window
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "8"))  # Default to conservative batch size
 
@@ -374,7 +373,7 @@ class RerankRequest(BaseModel):
     model: Optional[str] = Field(
         None, description="Model identifier (for API compatibility)"
     )
-    query: str = Field(..., max_length=MAX_QUERY_LENGTH, description="The search query")
+    query: str = Field(..., description="The search query")
     documents: List[str] = Field(
         ..., max_length=MAX_DOCUMENTS, description="List of documents to rerank"
     )
@@ -387,10 +386,7 @@ class RerankRequest(BaseModel):
     def validate_query(cls, v):
         if not v or not v.strip():
             raise ValueError("Query cannot be empty")
-        if len(v) > MAX_QUERY_LENGTH:
-            raise ValueError(
-                f"Query too long. Maximum {MAX_QUERY_LENGTH} characters allowed"
-            )
+        # Remove length validation - let tokenizer handle truncation
         return v.strip()
 
     @field_validator("documents")
