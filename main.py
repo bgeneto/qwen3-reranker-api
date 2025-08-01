@@ -87,7 +87,7 @@ REQUIRE_API_KEY = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 # Production safety limits
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4096"))
-MAX_DOCUMENT_LENGTH = int(os.getenv("MAX_DOCUMENT_LENGTH", "8192"))
+# MAX_DOCUMENT_LENGTH removed - let tokenizer handle document truncation based on model's context window
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "8"))  # Default to conservative batch size
 
@@ -348,15 +348,6 @@ async def debug_request_middleware(request: Request, call_next):
     """Log all incoming requests for debugging 422 errors."""
     if ENABLE_LOGGING and request.url.path in ["/rerank", "/v1/rerank"]:
         try:
-            # Log request details
-            safe_log(
-                logger.info,
-                "INCOMING REQUEST: method=%s, url=%s, headers=%s",
-                request.method,
-                str(request.url),
-                dict(request.headers),
-            )
-
             # Store the body for later access (FastAPI consumes it)
             body = await request.body()
 
@@ -409,16 +400,13 @@ class RerankRequest(BaseModel):
             raise ValueError("Documents list cannot be empty")
         if len(v) > MAX_DOCUMENTS:
             raise ValueError(
-                f"Too many documents. Maximum {MAX_DOCUMENTS} documents allowed"
+                f"Too many documents. Maximum {MAX_DOCUMENTS} documents allowed, received {len(v)}"
             )
 
+        # Remove document length validation - let tokenizer handle truncation
         for i, doc in enumerate(v):
             if not doc or not doc.strip():
                 raise ValueError(f"Document at index {i} cannot be empty")
-            if len(doc) > MAX_DOCUMENT_LENGTH:
-                raise ValueError(
-                    f"Document at index {i} too long. Maximum {MAX_DOCUMENT_LENGTH} characters allowed"
-                )
 
         return [doc.strip() for doc in v]
 
@@ -512,51 +500,52 @@ async def rerank(raw_request: Request, authenticated: bool = Depends(verify_api_
     try:
         raw_body = await raw_request.body()
         raw_body_str = raw_body.decode("utf-8") if raw_body else ""
-        safe_log(logger.info, "RAW REQUEST BODY: %s", raw_body_str)
 
         # Parse and validate the request
-        try:
-            if raw_body_str:
-                request_data = json.loads(raw_body_str)
-            else:
-                request_data = {}
+        if raw_body_str:
+            request_data = json.loads(raw_body_str)
+        else:
+            request_data = {}
 
-            safe_log(
-                logger.info,
-                "PARSED REQUEST DATA: %s",
-                json.dumps(request_data, ensure_ascii=False),
+        # Log basic request info
+        safe_log(
+            logger.info,
+            "REQUEST SUMMARY: query_length=%d, documents_count=%d, top_n=%s, body_size=%d bytes",
+            len(request_data.get("query", "")),
+            len(request_data.get("documents", [])),
+            request_data.get("top_n", "None"),
+            len(raw_body_str),
+        )
+
+        # Validate using Pydantic
+        request = RerankRequest(**request_data)
+
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid JSON format: {str(e)}"
+        safe_log(logger.error, "JSON decode error: %s", error_msg)
+        METRICS["requests_total"] += 1
+        METRICS["requests_failed"] += 1
+        raise HTTPException(status_code=422, detail=error_msg)
+    except ValidationError as e:
+        # Detailed validation error logging
+        error_details = []
+        for error in e.errors():
+            field = " -> ".join(str(x) for x in error["loc"])
+            error_details.append(
+                f"Field '{field}': {error['msg']} (received: {error.get('input', 'N/A')})"
             )
 
-            # Validate using Pydantic
-            request = RerankRequest(**request_data)
-
-        except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON format: {str(e)}"
-            safe_log(logger.error, "JSON decode error: %s", error_msg)
-            METRICS["requests_failed"] += 1
-            raise HTTPException(status_code=422, detail=error_msg)
-        except ValidationError as e:
-            # Detailed validation error logging
-            error_details = []
-            for error in e.errors():
-                field = " -> ".join(str(x) for x in error["loc"])
-                error_details.append(
-                    f"Field '{field}': {error['msg']} (received: {error.get('input', 'N/A')})"
-                )
-
-            error_msg = f"Request validation failed: {'; '.join(error_details)}"
-            safe_log(logger.error, "Pydantic validation error: %s", error_msg)
-            METRICS["requests_failed"] += 1
-            raise HTTPException(status_code=422, detail=error_msg)
-        except Exception as e:
-            error_msg = f"Unexpected validation error: {str(e)}"
-            safe_log(logger.error, "Unexpected validation error: %s", error_msg)
-            METRICS["requests_failed"] += 1
-            raise HTTPException(status_code=422, detail=error_msg)
-
+        error_msg = f"Request validation failed: {'; '.join(error_details)}"
+        safe_log(logger.error, "Pydantic validation error: %s", error_msg)
+        METRICS["requests_total"] += 1
+        METRICS["requests_failed"] += 1
+        raise HTTPException(status_code=422, detail=error_msg)
     except Exception as e:
-        safe_log(logger.error, "Error processing request: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        error_msg = f"Request processing error: {str(e)}"
+        safe_log(logger.error, "Request processing error: %s", error_msg)
+        METRICS["requests_total"] += 1
+        METRICS["requests_failed"] += 1
+        raise HTTPException(status_code=500, detail=error_msg)
 
     safe_log(
         logger.info,
