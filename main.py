@@ -8,7 +8,8 @@ in a format compatible with Cohere and Jina APIs. The API follows Cohere rerank 
 Author: Bernhard Enders (bgeneto)
 Adapted By: Gemini/Claude
 Created: July 11, 2025
-Version: 1.1.0
+Updated: August 1, 2025
+Version: 1.2.0
 License: MIT
 Python: 3.8+
 
