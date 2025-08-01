@@ -88,7 +88,9 @@ REQUIRE_API_KEY = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS", "100"))
 # MAX_QUERY_LENGTH and MAX_DOCUMENT_LENGTH removed - let tokenizer handle text truncation based on model's context window
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "8"))  # Default to conservative batch size
+BATCH_SIZE = int(
+    os.getenv("BATCH_SIZE", "2")
+)  # Default to conservative batch size for memory safety
 
 # --- Global metrics storage ---
 METRICS = {
@@ -255,7 +257,16 @@ def process_inputs(pairs: List[str]) -> Dict[str, torch.Tensor]:
 @torch.no_grad()
 def compute_scores(inputs: Dict[str, torch.Tensor]) -> List[float]:
     try:
-        logits = reranker_model(**inputs).logits[:, -1, :]
+        # Enable memory efficient attention if available
+        try:
+            with torch.backends.cuda.sdp_kernel(
+                enable_math=False, enable_flash=True, enable_mem_efficient=True
+            ):
+                logits = reranker_model(**inputs).logits[:, -1, :]
+        except:
+            # Fallback to standard attention if scaled_dot_product_attention is not available
+            logits = reranker_model(**inputs).logits[:, -1, :]
+
         true_scores = logits[:, token_true_id]
         false_scores = logits[:, token_false_id]
 
@@ -265,16 +276,84 @@ def compute_scores(inputs: Dict[str, torch.Tensor]) -> List[float]:
         # Return the probability of "true" and move to CPU to free GPU memory
         result = scores[:, 1].exp().cpu().tolist()
 
-        # Clean up GPU tensors
-        del logits, true_scores, false_scores, scores
+        # Explicitly delete tensors and clear cache
+        del logits, true_scores, false_scores, scores, inputs
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
 
         return result
+
     except torch.cuda.OutOfMemoryError as e:
-        # Clear cache and retry with smaller effective batch
-        torch.cuda.empty_cache()
+        # Clear cache and re-raise as RuntimeError for adaptive batching
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
         raise RuntimeError(
-            f"CUDA OOM in compute_scores. Try reducing BATCH_SIZE. Current: {BATCH_SIZE}"
+            f"CUDA OOM in compute_scores. Current batch size caused OOM."
         ) from e
+
+
+def process_with_adaptive_batching(
+    pairs: List[str], initial_batch_size: int = None
+) -> List[float]:
+    """Process pairs with adaptive batch size reduction on OOM."""
+    if initial_batch_size is None:
+        initial_batch_size = BATCH_SIZE
+
+    current_batch_size = initial_batch_size
+    all_scores = []
+
+    i = 0
+    while i < len(pairs):
+        batch_pairs = pairs[i : i + current_batch_size]
+
+        try:
+            inputs = process_inputs(batch_pairs)
+            scores = compute_scores(inputs)
+            all_scores.extend(scores)
+            i += current_batch_size
+
+            # Clear CUDA cache after each successful batch
+            if DEVICE == "cuda":
+                torch.cuda.empty_cache()
+
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e) or "OOM" in str(e):
+                # Clear cache and reduce batch size
+                if DEVICE == "cuda":
+                    torch.cuda.empty_cache()
+
+                current_batch_size = max(1, current_batch_size // 2)
+                safe_log(
+                    logger.warning,
+                    f"CUDA OOM detected. Reducing batch size to {current_batch_size}",
+                )
+
+                if current_batch_size == 0:
+                    raise RuntimeError(
+                        "Cannot process even single document due to memory constraints"
+                    )
+                # Don't increment i, retry with smaller batch
+            else:
+                raise e
+
+    return all_scores
+
+
+def get_gpu_memory_info():
+    """Get current GPU memory usage information."""
+    if DEVICE == "cuda" and torch.cuda.is_available():
+        memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        memory_reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+        memory_free = (
+            torch.cuda.get_device_properties(0).total_memory
+            - torch.cuda.memory_reserved()
+        ) / 1024**3
+        return {
+            "allocated_gb": round(memory_allocated, 2),
+            "reserved_gb": round(memory_reserved, 2),
+            "free_gb": round(memory_free, 2),
+        }
+    return {"allocated_gb": 0, "reserved_gb": 0, "free_gb": 0}
 
 
 # --- API Security Functions ---
@@ -571,17 +650,15 @@ async def rerank(raw_request: Request, authenticated: bool = Depends(verify_api_
         format_instruction(request.query, doc, instruction) for doc in request.documents
     ]
 
-    # Process in batches to avoid OOM on long document lists
-    all_scores = []
-    for i in range(0, len(pairs), BATCH_SIZE):
-        batch_pairs = pairs[i : i + BATCH_SIZE]
-        inputs = process_inputs(batch_pairs)
-        scores = compute_scores(inputs)
-        all_scores.extend(scores)
-
-        # Clear CUDA cache after each batch to prevent memory accumulation
-        if DEVICE == "cuda":
-            torch.cuda.empty_cache()
+    # Process with adaptive batching to handle OOM errors gracefully
+    try:
+        all_scores = process_with_adaptive_batching(pairs)
+    except RuntimeError as e:
+        error_msg = f"Memory processing error: {str(e)}"
+        safe_log(logger.error, "Memory processing error: %s", error_msg)
+        METRICS["requests_total"] += 1
+        METRICS["requests_failed"] += 1
+        raise HTTPException(status_code=500, detail=error_msg)
 
     log_gpu_memory("after processing")
 
