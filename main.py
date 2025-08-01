@@ -71,7 +71,7 @@ import torch
 from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # --- Environment Configuration ---
@@ -342,6 +342,37 @@ app.add_middleware(
 )
 
 
+# Debug middleware to log all requests
+@app.middleware("http")
+async def debug_request_middleware(request: Request, call_next):
+    """Log all incoming requests for debugging 422 errors."""
+    if ENABLE_LOGGING and request.url.path in ["/rerank", "/v1/rerank"]:
+        try:
+            # Log request details
+            safe_log(
+                logger.info,
+                "INCOMING REQUEST: method=%s, url=%s, headers=%s",
+                request.method,
+                str(request.url),
+                dict(request.headers),
+            )
+
+            # Store the body for later access (FastAPI consumes it)
+            body = await request.body()
+
+            # Create a new request with the same body for the endpoint
+            async def receive():
+                return {"type": "http.request", "body": body}
+
+            request._receive = receive
+
+        except Exception as e:
+            safe_log(logger.error, "Error in debug middleware: %s", str(e))
+
+    response = await call_next(request)
+    return response
+
+
 @app.on_event("shutdown")
 def shutdown_event():
     cleanup_logging()
@@ -466,7 +497,7 @@ def get_metrics(authenticated: bool = Depends(verify_api_key)):
 
 @app.post("/v1/rerank", response_model=RerankResponse, summary="Rerank Documents")
 @app.post("/rerank", response_model=RerankResponse, summary="Rerank Documents")
-def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)):
+async def rerank(raw_request: Request, authenticated: bool = Depends(verify_api_key)):
     """
     Reranks documents based on a query and returns the top_k results
     with relevance scores.
@@ -476,9 +507,60 @@ def rerank(request: RerankRequest, authenticated: bool = Depends(verify_api_key)
     - API key header: X-API-Key: <your-api-key>
     """
     start_time = datetime.now()
+
+    # Log raw request body for debugging
+    try:
+        raw_body = await raw_request.body()
+        raw_body_str = raw_body.decode("utf-8") if raw_body else ""
+        safe_log(logger.info, "RAW REQUEST BODY: %s", raw_body_str)
+
+        # Parse and validate the request
+        try:
+            if raw_body_str:
+                request_data = json.loads(raw_body_str)
+            else:
+                request_data = {}
+
+            safe_log(
+                logger.info,
+                "PARSED REQUEST DATA: %s",
+                json.dumps(request_data, ensure_ascii=False),
+            )
+
+            # Validate using Pydantic
+            request = RerankRequest(**request_data)
+
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON format: {str(e)}"
+            safe_log(logger.error, "JSON decode error: %s", error_msg)
+            METRICS["requests_failed"] += 1
+            raise HTTPException(status_code=422, detail=error_msg)
+        except ValidationError as e:
+            # Detailed validation error logging
+            error_details = []
+            for error in e.errors():
+                field = " -> ".join(str(x) for x in error["loc"])
+                error_details.append(
+                    f"Field '{field}': {error['msg']} (received: {error.get('input', 'N/A')})"
+                )
+
+            error_msg = f"Request validation failed: {'; '.join(error_details)}"
+            safe_log(logger.error, "Pydantic validation error: %s", error_msg)
+            METRICS["requests_failed"] += 1
+            raise HTTPException(status_code=422, detail=error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected validation error: {str(e)}"
+            safe_log(logger.error, "Unexpected validation error: %s", error_msg)
+            METRICS["requests_failed"] += 1
+            raise HTTPException(status_code=422, detail=error_msg)
+
+    except Exception as e:
+        safe_log(logger.error, "Error processing request: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
     safe_log(
         logger.info,
-        "REQUEST: %s",
+        "VALIDATED REQUEST: %s",
         json.dumps(
             {
                 "timestamp": start_time.isoformat(),
